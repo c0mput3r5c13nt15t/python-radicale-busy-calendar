@@ -2,6 +2,11 @@ import os
 import requests
 from icalendar import Calendar, Event
 from flask import Flask, Response
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
 
 app = Flask(__name__)
 
@@ -58,7 +63,7 @@ def is_busy(transp):
 # Function to combine .ics files into one and include only busy events
 def combine_ics_files(ics_files):
     combined_cal = Calendar()
-    combined_cal.add("prodid", "-//Free Busy Paul Maier//EN")
+    combined_cal.add("prodid", "-//Free Busy Calendar " + os.getenv("NAME") + "//EN")
     combined_cal.add("version", "2.0")
 
     # Add default color to the calendar (using X- prefix for custom property)
@@ -114,8 +119,8 @@ def combine_ics_files(ics_files):
 
 # Function to generate and serve an online .ics feed
 @app.route("/")
-def generate_ics():
-    ics_directory = "./collections"  # Replace with your directory
+def serve_calendar():
+    ics_directory = os.getenv("COLLECTIONS_DIR")
     ics_files = find_ics_files(ics_directory)
     combined_cal = combine_ics_files(ics_files)
 
