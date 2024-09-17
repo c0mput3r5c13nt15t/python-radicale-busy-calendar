@@ -3,3 +3,5 @@
 collections/
 
 __pycache__/
+
+*.json
