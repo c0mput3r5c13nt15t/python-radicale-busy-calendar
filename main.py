@@ -126,7 +126,7 @@ def serve_calendar():
 
     response = Response(combined_cal.to_ical(), mimetype="text/calendar")
     response.headers["Content-Disposition"] = (
-        "attachment; filename=combined_calendar.ics"
+        "attachment; filename=free-busy_" + os.getenv("NAME").replace(" ", "_") + ".ics"
     )
     return response
 

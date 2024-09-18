@@ -30,20 +30,17 @@
             "routes": [
                 {
                     "handle": [
-                    {
-                        "handler": "reverse_proxy",
-                        "transport": {
-                            "protocol": "http",
-                            "tls": {
-                                "insecure_skip_verify": true
-                            }
-                        },
-                        "upstreams": [
-                            {
-                                "dial": "127.0.0.1:8080"
-                            }
-                        ]
-                    }
+                        {
+                            "handler": "reverse_proxy",
+                            "transport": {
+                                "protocol": "http"
+                            },
+                            "upstreams": [
+                                {
+                                    "dial": "127.0.0.1:8080"
+                                }
+                            ]
+                        }
                     ]
                 }
             ]
