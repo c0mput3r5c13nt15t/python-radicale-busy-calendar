@@ -1,8 +1,10 @@
 import os
 import requests
-from icalendar import Calendar, Event
+from icalendar import Calendar, FreeBusy
 from flask import Flask, Response
 from dotenv import load_dotenv
+from datetime import datetime, date, time, timedelta
+import pytz
 
 
 load_dotenv()
@@ -50,28 +52,27 @@ def fetch_ics_from_url(url):
         response = requests.get(url)
         response.raise_for_status()
         ics_content = response.content
+        return ics_content
     except requests.RequestException as e:
         print(f"Error fetching {url}: {e}")
-    return ics_content
-
-
-# Function to determine availability based on TRANSP field
-def is_busy(transp):
-    return transp == "OPAQUE"
+        return None
 
 
 # Function to combine .ics files into one and include only busy events
 def combine_ics_files(ics_files):
     combined_cal = Calendar()
-    combined_cal.add("prodid", "-//Free Busy Calendar " + os.getenv("NAME") + "//EN")
+    combined_cal.add(
+        "prodid", "-//free-busy_" + os.getenv("NAME").replace(" ", "_") + "//EN"
+    )
     combined_cal.add("version", "2.0")
 
-    # Add default color to the calendar (using X- prefix for custom property)
-    combined_cal.add("X-CALENDAR-COLOR", "#d20f44")
-
-    seen_events = set()  # To track seen events and avoid duplicates
-
     for ics_file in ics_files:
+        free_busy = FreeBusy()  # Create a FreeBusy object for each ics file
+        now = datetime.now()
+        free_busy.add("uid", "freebusy-" + os.path.basename(ics_file) + "-" + str(int(datetime.timestamp(now))))
+        free_busy.add("dtstamp", now)
+        free_busy.add('ATTENDEE', 'mailto:' + str(os.getenv("EMAIL")).lower())
+
         try:
             if isinstance(ics_file, str) and ics_file.startswith("http"):
                 ics_content = fetch_ics_from_url(ics_file)
@@ -80,41 +81,46 @@ def combine_ics_files(ics_files):
                 with open(ics_file, "r", encoding="utf-8", errors="ignore") as f:
                     gcal = Calendar.from_ical(f.read())
 
+            has_entry = False
+
             for component in gcal.walk():
                 if component.name == "VEVENT":
                     # Check TRANSP field to determine if the event should be included
                     transp = component.get("transp", "OPAQUE")
-                    if is_busy(transp):
-                        # Generate a unique key for the event based on start and end times
-                        start = component.get("dtstart").to_ical()
-                        end = component.get("dtend").to_ical()
-                        event_key = (start, end)
+                    if transp == "OPAQUE":
+                        # Generate a unique key for the busy time based on start and end times
+                        start = ensure_datetime(component.get("dtstart").dt)
+                        end = ensure_datetime(component.get("dtend").dt)
 
-                        if event_key not in seen_events:
-                            seen_events.add(event_key)
-                            # Create a new event with anonymized details
-                            event = Event()
+                        free_busy.add("FREEBUSY", (start, end))
 
-                            # Set availability as summary based on TRANSP
-                            availability = "Busy"
+                        has_entry = True
 
-                            event.add("summary", availability)
-                            event.add("dtstart", component.get("dtstart"))
-                            event.add("dtend", component.get("dtend"))
+            if has_entry:
+                # Add the grouped VFREEBUSY for this ics file to the combined calendar
+                combined_cal.add_component(free_busy)
 
-                            # Copy RRULE directly (for recurring events)
-                            if component.get("rrule"):
-                                event.add("rrule", component.get("rrule"))
-
-                            # Copy EXDATE directly if present (handling exceptions for recurring events)
-                            if component.get("exdate"):
-                                event.add("exdate", component.get("exdate"))
-
-                            combined_cal.add_component(event)
         except Exception as e:
             print(f"Error processing {ics_file}: {e}")
 
     return combined_cal
+
+def ensure_datetime(dt):
+    if isinstance(dt, date) and not isinstance(dt, datetime):
+        # Convert datetime.date to datetime.datetime at midnight with no timezone info
+        return datetime.combine(dt, time()).replace(tzinfo=pytz.UTC)
+    elif isinstance(dt, datetime):
+        if dt.tzinfo is None:
+            # Add default timezone info if missing
+            return dt.replace(tzinfo=pytz.UTC)
+        return dt
+    return None
+
+def convert_to_datetime(dt):
+    if isinstance(dt, datetime.date) and not isinstance(dt, datetime.datetime):
+        # Convert datetime.date to datetime.datetime at midnight with no timezone info
+        return datetime.combine(dt, datetime.min.time())
+    return dt
 
 
 # Function to generate and serve an online .ics feed
